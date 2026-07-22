@@ -1,0 +1,18 @@
+{
+  "id": "dev.jensen.plan-lint",
+  "name": "Plan Lint (CriticMarkup)",
+  "version": "0.1.0",
+  "minAppVersion": "0.0.0",
+  "description": "Render CriticMarkup review marks in fenced blocks.",
+  "author": "Jensen",
+  "entry": { "wasm": "plugin.wasm" },
+  "contributes": {
+    "commands": [],
+    "panels": [],
+    "views": [],
+    "themes": [],
+    "markdown": [{ "id": "criticmarkup", "language": "criticmarkup", "func": "render" }]
+  },
+  "permissions": {},
+  "activationEvents": []
+}

@@ -1,0 +1,37 @@
+{
+  "plugins": [
+    {
+      "id": "dev.jensen.theme-light",
+      "name": "Paper Light",
+      "author": "Jensen",
+      "description": "A clean light theme for working in bright rooms.",
+      "category": "theme",
+      "version": "0.1.0",
+      "min_app_version": "0.0.0",
+      "repo": "jensen-org/plugin-theme-light",
+      "sha256": "5abbdf478612b5272206e99572fceedbf823a131ce377b94b85eb9e028eae2f5"
+    },
+    {
+      "id": "dev.jensen.impact",
+      "name": "Impact",
+      "author": "Jensen",
+      "description": "Show what a file change would affect, read from the code graph.",
+      "category": "graph",
+      "version": "0.1.0",
+      "min_app_version": "0.0.0",
+      "repo": "jensen-org/plugin-impact",
+      "sha256": "84f1eec72041324d69b038c49761b1d0d80518581ff1eff22fab87608cc96247"
+    },
+    {
+      "id": "dev.jensen.plan-lint",
+      "name": "Plan Lint (CriticMarkup)",
+      "author": "Jensen",
+      "description": "Render CriticMarkup review marks in fenced blocks.",
+      "category": "lint",
+      "version": "0.1.0",
+      "min_app_version": "0.0.0",
+      "repo": "jensen-org/plugin-plan-lint",
+      "sha256": "2106eaa2500bdf5ea8579de8597a3f1f1b5767135a186f32d59a7776c4f22331"
+    }
+  ]
+}
