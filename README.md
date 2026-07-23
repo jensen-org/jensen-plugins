@@ -14,7 +14,6 @@ index.json        the catalog Jensen fetches
 schema.json       the JSON Schema for index.json
 AUTHORING.md      the full plugin authoring guide (TypeScript)
 CONTRIBUTING.md   how to publish a plugin here
-tools/            release-plugin.sh (the Rust/WASM advanced path)
 plugins/          source for the first-party example plugins (Rust/WASM advanced path)
   hello/          command + panel + UI starter
   impact/         reads the code graph (a graph tool)
@@ -23,8 +22,8 @@ plugins/          source for the first-party example plugins (Rust/WASM advanced
 ```
 
 Plugins are written in **TypeScript** and published with `jensen publish`, which generates the manifest
-and registry entry for you (see `AUTHORING.md`). The `plugins/` examples and `tools/release-plugin.sh`
-are the advanced Rust-to-WebAssembly path, still supported.
+and assembles the release for you (see `AUTHORING.md`). The `plugins/` examples are the advanced
+Rust-to-WebAssembly path, still supported and published with the same one command.
 
 ## How the app reads this
 
@@ -50,9 +49,10 @@ the consent screen, not by the registry.
 ## Publishing a plugin
 
 See `CONTRIBUTING.md` for the checklist and `AUTHORING.md` for the full guide. In short: run
-`jensen publish` in your built plugin directory (it generates `manifest.json`, computes the sha256, and
-prints the entry), cut a GitHub release in your own repo whose tag equals the `version`, then open a
-pull request adding one entry to the `plugins` array in `index.json`.
+`jensen publish` in your built plugin directory (it generates `manifest.json`, assembles a `release/`
+folder, and prints the entry), cut a GitHub release in your own repo whose tag equals the `version`
+uploading every file in `release/`, then open a pull request adding one entry to the `plugins` array in
+`index.json`.
 
 An entry:
 

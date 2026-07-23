@@ -110,11 +110,11 @@ Build, then load it for local testing:
 npm run build
 ```
 
-`jensen publish` (below) turns this into a manifest and a registry entry. For local iteration, copy
-`manifest.json` (which `jensen publish` writes) and `main.js` into
-`<JENSEN_STATE_DIR>/plugins/<id>/`, restart Jensen, open the **Plugins** page, and enable the plugin.
-Your button appears in the top bar, your command in the palette, your view in the switcher. Disable it
-and all of that disappears in one tick.
+`jensen publish` (below) turns this into a manifest, a release folder, and a registry entry. For local
+iteration, copy the contents of that `release/` folder into `~/.local/share/jensen/plugins/<id>/`
+(unzipping `ui.zip` into `ui/` if you have one), restart Jensen, open the **Plugins** page, and enable
+the plugin. Your button appears in the top bar, your command in the palette, your view in the switcher.
+Disable it and all of that disappears in one tick.
 
 ## The Plugin class
 
@@ -219,8 +219,9 @@ Publishing has no form. From your built plugin directory:
 jensen publish            # or: jensen publish path/to/plugin
 ```
 
-It reads `package.json`, requires a built `main.js`, generates `manifest.json` (activating on startup
-so your `onload` runs), computes the manifest's `sha256`, and prints the registry entry to add:
+It reads `package.json`, finds what your build produced, generates `manifest.json` (activating on
+startup so your `onload` runs), assembles a `release/` folder holding the manifest and every artifact it
+pins, computes the manifest's `sha256`, and prints the registry entry to add:
 
 ```json
 {
@@ -240,8 +241,8 @@ You can also run it from the app: **Plugins → Publish**, pick your folder, and
 
 Then:
 
-1. Create a GitHub release on your `repo` whose tag equals `version`, uploading `manifest.json` and
-   `main.js` (plus a zipped `ui/` if you have one).
+1. Create a GitHub release on your `repo` whose tag equals `version`, uploading every file in
+   `release/`.
 2. To reach every user, open a pull request adding the entry above to this registry's `index.json`
    (see `CONTRIBUTING.md`). To test or share privately, users can install the release URL directly;
    Jensen marks such plugins **unverified** and asks for the full permission consent.
@@ -271,10 +272,19 @@ per-command work bounded and handle a denied or rate-limited call gracefully.
 ## The advanced path: Rust to WebAssembly
 
 TypeScript is the default. For CPU-heavy or existing-Rust logic you can instead ship a WebAssembly
-module (`entry.wasm`) built against the `jensen-plugin` PDK; it runs in the same kernel with the same
-permissions and governor. The example plugins in `plugins/` (`hello`, `impact`, `plan-lint`,
-`theme-light`) are this path. Themes need no code at all: ship a token map and declare a
-`contributes.themes` entry with no `entry`.
+module built against the `jensen-plugin` PDK; it runs in the same kernel with the same permissions and
+governor. The example plugins in `plugins/` (`hello`, `impact`, `plan-lint`, `theme-light`) are this
+path.
+
+Nothing about publishing changes. `package.json` stays the only file you author, and `jensen publish`
+picks up a `plugin.wasm` at the project root, or the newest module under
+`target/wasm32-unknown-unknown/release/`, the same way it picks up `main.js`. A `ui/` folder is zipped
+and pinned for you. Themes need no code at all: ship a token map and declare a `contributes.themes`
+entry naming its `tokensFile`.
+
+A plugin with code activates on startup by default. Set `jensen.activationEvents` yourself to load
+lazily instead (`["onCommand:impact.check", "onPanel:impact.panel"]`), or to `[]` for something like a
+markdown renderer that the app invokes on demand.
 
 ## Security checklist
 

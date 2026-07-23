@@ -4,5 +4,5 @@ cd "$(dirname "$0")"
 cargo build --release --target wasm32-unknown-unknown
 cp target/wasm32-unknown-unknown/release/impact_plugin.wasm plugin.wasm
 
-echo "built plugin.wasm next to manifest.json"
-echo "install: copy this directory to \$JENSEN_STATE_DIR/plugins/dev.jensen.impact/"
+echo "built plugin.wasm"
+echo "next: jensen publish $(pwd)"

@@ -13,11 +13,12 @@ checklist.
    jensen publish
    ```
 
-   `jensen publish` reads `package.json`, generates and validates `manifest.json`, computes its
-   sha256, and prints the registry entry to add here. (Or use **Plugins → Publish** in the app.)
+   `jensen publish` reads `package.json`, generates and validates `manifest.json`, pins every artifact
+   it ships, assembles a `release/` folder, and prints the registry entry to add here. (Or use
+   **Plugins → Publish** in the app.)
 
-2. **Cut a GitHub release** in your plugin's repo whose tag equals the `version`, uploading
-   `manifest.json` and `main.js` (plus a zipped `ui/` if you have one).
+2. **Cut a GitHub release** in your plugin's repo whose tag equals the `version`, uploading every file
+   in `release/`.
 
 3. **Add one entry** to the `plugins` array in `index.json` (see `README.md` for the shape). `id` must
    match your manifest, `version` must equal the release tag, `repo` is the GitHub `owner/name` hosting
@@ -27,5 +28,6 @@ checklist.
 
 ## First-party plugins
 
-The plugins under `plugins/` are the Rust-to-WebAssembly examples, maintained here. Assemble a release
-for one with `tools/release-plugin.sh plugins/<name>`.
+The plugins under `plugins/` are the Rust-to-WebAssembly examples, maintained here. Build one with its
+`build.sh`, then publish it exactly like any other: `jensen publish plugins/<name>`. It picks up the
+compiled module from `target/wasm32-unknown-unknown/release/` and zips the `ui/` folder itself.

@@ -9,7 +9,18 @@
       "version": "0.1.0",
       "min_app_version": "0.0.0",
       "repo": "jensen-org/plugin-theme-light",
-      "sha256": "5abbdf478612b5272206e99572fceedbf823a131ce377b94b85eb9e028eae2f5"
+      "sha256": "b2c26457c4958f22ff341744d3f8b85f219ef3714539ad07baf0e4e294f00bcc"
+    },
+    {
+      "id": "dev.jensen.hello",
+      "name": "Hello",
+      "author": "Jensen",
+      "description": "A minimal sandboxed plugin: one command and one panel.",
+      "category": "example",
+      "version": "0.1.0",
+      "min_app_version": "0.0.0",
+      "repo": "jensen-org/plugin-hello",
+      "sha256": "3d3df3d4491d14daa31eeed980cd5c2e91e6324aa8a275474c3dee39d615a2b1"
     },
     {
       "id": "dev.jensen.impact",
@@ -20,7 +31,7 @@
       "version": "0.1.0",
       "min_app_version": "0.0.0",
       "repo": "jensen-org/plugin-impact",
-      "sha256": "84f1eec72041324d69b038c49761b1d0d80518581ff1eff22fab87608cc96247"
+      "sha256": "5216bb5ffcc2a9d10f36a7c3912511d044d41853bdd53c08ac752317ebad960b"
     },
     {
       "id": "dev.jensen.plan-lint",
@@ -31,7 +42,7 @@
       "version": "0.1.0",
       "min_app_version": "0.0.0",
       "repo": "jensen-org/plugin-plan-lint",
-      "sha256": "2106eaa2500bdf5ea8579de8597a3f1f1b5767135a186f32d59a7776c4f22331"
+      "sha256": "af86fbbaa855f9ff1ef203ba5806adb3227b53ba64a91a814f8305e7ab376e0a"
     }
   ]
 }

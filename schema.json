@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/jensen-org/jensen-registry/main/schema.json",
+  "$id": "https://raw.githubusercontent.com/jensen-org/jensen-registry/develop/schema.json",
   "title": "Jensen plugin registry index",
   "type": "object",
   "required": ["plugins"],
@@ -20,7 +20,7 @@
         "id": {
           "type": "string",
           "pattern": "^[a-z0-9-]+(\\.[a-z0-9-]+)+$",
-          "description": "Reverse-dns identity as publisher.name, e.g. acme.markdown-lint. Stable across versions and used as the install directory name. Must match the id in the signed release manifest."
+          "description": "Reverse-dns identity as publisher.name, e.g. acme.markdown-lint. Stable across versions and used as the install directory name. Must match the id in the release manifest."
         },
         "name": { "type": "string", "description": "Display name." },
         "author": { "type": "string", "description": "Who publishes it, shown on the card." },
@@ -34,7 +34,7 @@
         "min_app_version": {
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+",
-          "description": "Lowest Jensen version the plugin supports, for display. The signed manifest is authoritative and is re-checked at install."
+          "description": "Lowest Jensen version the plugin supports, for display. The release manifest is authoritative and is re-checked at install."
         },
         "repo": {
           "type": "string",
