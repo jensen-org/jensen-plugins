@@ -6,33 +6,26 @@ checklist.
 
 ## Checklist
 
-1. **Build the release.** From your plugin's source directory:
+1. **Build and publish.** From your built plugin directory (the one with `main.js`):
 
    ```bash
-   tools/release-plugin.sh my-plugin/
+   npm run build
+   jensen publish
    ```
 
-   It builds the wasm (when your manifest declares one), zips `ui/`, copies any theme tokens file,
-   writes `my-plugin/release/manifest.json` with a `dist` block pinning every artifact's sha256, and
-   prints the manifest's own sha256, the value for your registry entry.
+   `jensen publish` reads `package.json`, generates and validates `manifest.json`, computes its
+   sha256, and prints the registry entry to add here. (Or use **Plugins → Publish** in the app.)
 
-2. **Validate the manifest** with the same linter Jensen uses (from the Jensen app repo):
+2. **Cut a GitHub release** in your plugin's repo whose tag equals the `version`, uploading
+   `manifest.json` and `main.js` (plus a zipped `ui/` if you have one).
 
-   ```bash
-   cargo run -q -p pluginhost --bin pluginhost-lint -- my-plugin/manifest.json
-   ```
+3. **Add one entry** to the `plugins` array in `index.json` (see `README.md` for the shape). `id` must
+   match your manifest, `version` must equal the release tag, `repo` is the GitHub `owner/name` hosting
+   the release, and `sha256` is the value `jensen publish` printed.
 
-3. **Cut a GitHub release** in your plugin's repo whose tag equals the manifest `version`, uploading
-   the files from `release/`: `manifest.json`, plus `plugin.wasm`, `ui.zip`, and any theme tokens when
-   your plugin has them.
-
-4. **Add one entry** to the `plugins` array in `index.json` (see `README.md` for the shape). `id` must
-   match your release manifest, `version` must equal the release tag, `repo` is the GitHub `owner/name`
-   hosting the release, and `sha256` is the value `release-plugin.sh` printed.
-
-5. **Validate `index.json`** against `schema.json`, then open the pull request.
+4. **Validate `index.json`** against `schema.json`, then open the pull request.
 
 ## First-party plugins
 
-The plugins under `plugins/` are maintained here. Each is a normal plugin source directory; assemble a
-release the same way with `tools/release-plugin.sh plugins/<name>`.
+The plugins under `plugins/` are the Rust-to-WebAssembly examples, maintained here. Assemble a release
+for one with `tools/release-plugin.sh plugins/<name>`.

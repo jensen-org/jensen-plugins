@@ -1,412 +1,280 @@
 # Building Jensen plugins
 
-Jensen is extensible. A plugin can add commands, panels, whole views, and themes, and it can read the
-project's code graph, query the knowledge index, inspect git history, and read or write files, all
-without ever touching your machine directly.
+Jensen is moddable. A plugin can add buttons, commands, whole views, panels, status items, and
+themes, and it can read the project's code graph, query the knowledge index, inspect git history, and
+read or write files, all without ever touching your machine directly.
 
-That last part is the whole design. Jensen runs as a **kernel**: it is the only actor that ever
-touches the filesystem, the network, git, or the OS. Your plugin is an unprivileged sandbox with zero
-ambient authority. It cannot open a file, a socket, or a process, cannot reach the app's UI, and
-cannot see or talk to another plugin. The only way it causes any effect is to ask the kernel to
-perform an action on its behalf, a brokered "syscall" that the kernel checks against the permissions
-you declared and the user consented to, meters against a resource budget, performs itself, and can
-deny or revoke at any time. Deny by default. If the kernel does not implement a syscall, that power
-does not exist for any plugin.
+You write plugins in **TypeScript**, the way you would an Obsidian plugin: a `Plugin` class with an
+`onload()` method that registers what you contribute. There is no toolchain to install beyond Node,
+and no manifest to hand-write; `jensen publish` generates it for you.
 
-This guide takes you from an empty folder to a plugin published in this registry.
+That last part, the not-touching-your-machine part, is the whole design. Jensen runs as a **kernel**:
+it is the only actor that ever touches the filesystem, the network, git, or the OS. Your plugin runs
+in a sandbox with zero ambient authority. It cannot open a file, a socket, or a process, cannot reach
+the app's window, and cannot see or talk to another plugin. The only way it causes any effect is to
+ask the kernel to perform an action on its behalf, a brokered call the kernel checks against the
+permissions you declared and the user consented to, meters against a resource budget, performs itself,
+and can deny or revoke at any time. Deny by default.
 
 ## Table of contents
 
 - [The security model](#the-security-model)
-- [Anatomy of a plugin](#anatomy-of-a-plugin)
-- [The manifest](#the-manifest)
-- [Getting started](#getting-started)
-- [Writing the logic](#writing-the-logic)
-- [Writing the UI](#writing-the-ui)
-- [Examples](#examples)
-- [Resource limits](#resource-limits)
+- [Quickstart](#quickstart)
+- [The Plugin class](#the-plugin-class)
+- [Capabilities](#capabilities)
+- [Adding a UI](#adding-a-ui)
+- [package.json and the jensen block](#packagejson-and-the-jensen-block)
 - [Publishing](#publishing)
+- [Resource limits](#resource-limits)
+- [The advanced path: Rust to WebAssembly](#the-advanced-path-rust-to-webassembly)
 - [Security checklist](#security-checklist)
 
 ## The security model
 
-Two sandboxes, one broker:
+Your plugin has two halves, and one broker sits between them and the app:
 
-- **Logic** runs as WebAssembly in a memory-isolated sandbox with no filesystem and no network of its
-  own. It reaches the outside world only through a single host call, `jensen_syscall`.
-- **UI** runs in a separate null-origin sandboxed iframe. It has no network (`connect-src 'none'`),
-  no access to the app, and no way to call the kernel. It talks only to its own logic half, by posting
-  messages that the host relays.
+- **Logic** runs in a null-origin sandboxed iframe served from the `plugin://` origin. It is
+  cross-origin to the app (so it cannot read the app's window, storage, or another plugin) and its
+  Content-Security-Policy sets `connect-src 'none'`, so it has **no network of its own**. Its only way
+  out is a brokered call, `jensen.<capability>`, relayed to the kernel.
+- **UI** (optional) runs in its own null-origin iframe. It has no kernel access at all; it talks only
+  to your logic half, by posting messages the host relays.
 - **Every effect** flows through the kernel: `charge the resource budget → check the capability →
   perform the action → return a result`. A denied call returns an error, it never crashes the app, and
-  the user is shown which capability was blocked so they can grant or keep it blocked.
+  the user is shown which capability was blocked so they can grant it or keep it blocked.
 
-Because everything a plugin can touch is declared up front in `manifest.json`, Jensen renders your
-commands, panels, and themes **without running any of your code**. Your WASM executes only when a
-command or panel is actually used, and when the plugin is disabled every registration is reclaimed.
+Chrome you add (buttons, commands, views, panels, status items) is rendered by Jensen's own UI from a
+plain description you register; your code never runs in the app's window. When your plugin is disabled,
+every registration is reclaimed and its sandbox is torn down.
 
-## Anatomy of a plugin
+## Quickstart
 
-A plugin is a directory with up to a few parts:
+Prerequisites: Node and a bundler (esbuild is one line). A plugin is a small TypeScript project.
 
 ```
 my-plugin/
-  manifest.json        required: identity, contributions, permissions
-  plugin.wasm          the compiled logic (omit for a theme-only plugin)
-  ui/                  the iframe UI (optional)
-    index.html
-    main.js
-  theme.json           a theme's tokens (only for a theme contribution)
+  package.json         identity + the jensen block (permissions, category, repo)
+  src/main.ts          your Plugin class
+  main.js              the bundled output your build produces
+  ui/                  optional iframe UI (index.html, ...)
 ```
 
-- `manifest.json` is the contract. It is the same file Jensen validates, the page shows, and the
-  registry linter checks, so they can never disagree.
-- `plugin.wasm` is your logic compiled to `wasm32-unknown-unknown`.
-- `ui/` is a plain web page. It renders inside the sandboxed iframe.
-- Any theme tokens file is delivered to your plugin directory and read by name.
+`src/main.ts`:
 
-The published example plugins in this repo are the shortest way in: `plugins/hello` (command + panel +
-UI), `plugins/impact` (reads the code graph), `plugins/plan-lint` (a markdown renderer, no UI), and
-`plugins/theme-light` (a theme with no code at all).
+```ts
+import { Plugin } from "@jensen/plugin";
 
-## The manifest
+export default class extends Plugin {
+  async onload() {
+    this.addRibbonIcon("cloud", "Scan cluster", () => this.scan());
 
-```json
-{
-  "id": "dev.you.myplugin",
-  "name": "My Plugin",
-  "version": "0.1.0",
-  "minAppVersion": "0.0.0",
-  "description": "One line describing what it does.",
-  "author": "Your Name",
+    this.addCommand({
+      id: "gcp.scan",
+      name: "GCP: Scan cluster",
+      callback: () => this.scan(),
+    });
 
-  "entry": { "wasm": "plugin.wasm", "ui": "ui/index.html" },
+    this.registerView({ id: "gcp", label: "GCP", icon: "cloud" });
+  }
 
-  "contributes": {
-    "commands": [{ "id": "my.run", "title": "Run My Thing", "category": "My Plugin" }],
-    "panels":   [{ "id": "my.panel", "label": "My Panel", "whenView": "code" }],
-    "views":    [{ "id": "my.view", "label": "My View", "icon": "sparkles" }],
-    "themes":   [{ "id": "my.theme", "name": "My Theme", "dark": true, "tokensFile": "theme.json" }]
-  },
-
-  "permissions": {
-    "graph": false,
-    "knowledge": false,
-    "git": false,
-    "fs": [],
-    "network": []
-  },
-
-  "activationEvents": ["onCommand:my.run", "onPanel:my.panel"]
+  async scan() {
+    const impact = await this.graph.impact({ path: "infra/main.tf" });
+    await this.log.info(`scan touched ${JSON.stringify(impact)}`);
+  }
 }
 ```
 
-Field reference:
+`package.json`:
 
-| Field | Meaning |
+```json
+{
+  "name": "GCP Scanner",
+  "version": "1.0.0",
+  "description": "Scan clusters from the graph.",
+  "author": "Your Name",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --format=esm --outfile=main.js"
+  },
+  "devDependencies": { "@jensen/plugin": "*", "esbuild": "*" },
+  "jensen": {
+    "id": "dev.you.gcp-scanner",
+    "category": "cloud",
+    "permissions": { "graph": true }
+  }
+}
+```
+
+Build, then load it for local testing:
+
+```bash
+npm run build
+```
+
+`jensen publish` (below) turns this into a manifest and a registry entry. For local iteration, copy
+`manifest.json` (which `jensen publish` writes) and `main.js` into
+`<JENSEN_STATE_DIR>/plugins/<id>/`, restart Jensen, open the **Plugins** page, and enable the plugin.
+Your button appears in the top bar, your command in the palette, your view in the switcher. Disable it
+and all of that disappears in one tick.
+
+## The Plugin class
+
+Extend `Plugin` and default-export it. Override `onload` (and optionally `onunload`); everything you
+register is disposed automatically when the plugin unloads.
+
+| Method | Adds |
 | --- | --- |
-| `id` | Reverse-DNS, lowercase letters, digits, `.` and `-` only. Must be globally unique. |
-| `version` / `minAppVersion` | Semver. The plugin is rejected if `minAppVersion` is newer than the running app. |
-| `entry.wasm` | Path to the compiled logic, relative to the plugin dir. Omit for a theme-only plugin. |
-| `entry.ui` | Path to the iframe entry. Omit if the plugin has no UI. Presence of this field is what grants the `ui.post` syscall. |
-| `contributes.commands` | `{ id, title, category?, icon? }`. Appear in the command palette and native menu. |
-| `contributes.panels` | `{ id, label, whenView?, icon? }`. Dock into the right panel; `whenView` limits them to one view (for example `"code"`). |
-| `contributes.views` | `{ id, label, icon }`. Top-level views. |
-| `contributes.themes` | `{ id, name, dark, tokensFile }`. `tokensFile` is a JSON token map in the plugin dir. |
-| `permissions.graph` / `knowledge` / `git` | Booleans. Gate the matching syscalls. |
-| `permissions.fs` | Array of **relative** subpaths (for example `["docs/"]`). Each confines file access to `<project root>/<subpath>`. `..`, absolute paths, and backslashes are rejected. |
-| `permissions.network` | Array of **exact** hosts (for example `["api.example.com"]`). No wildcards, no ports needed. |
-| `activationEvents` | When to load the WASM: `onStartup`, `onCommand:<id>`, `onPanel:<id>`, `onView:<id>`. Every event must reference a contribution you declared. A theme-only plugin has none. |
+| `addRibbonIcon(icon, title, callback)` | A button in the top bar. `icon` is a lucide name. |
+| `addCommand({ id, name, callback })` | A command in the palette (and keymap). |
+| `registerView({ id, label, icon })` | A top-level view (an entry in the header switcher). |
+| `addStatusBarItem({ id, label?, icon?, tooltip?, onClick? })` | A status-bar item. |
+| `register(disposable)` | Track any `{ dispose() }` for automatic cleanup on unload. |
 
-The `permissions` you write are only what you *request*. The kernel enforces the **granted** set, which
-is your request intersected with what the user approved on the consent screen. A user can install your
-plugin and still withhold, say, network, and the affected syscalls return a permission error.
+Each `addX` returns a disposable, so you can remove a contribution before unload if you want. `icon`
+values are [lucide](https://lucide.dev) names (`"cloud"`, `"git-branch"`, `"sparkles"`); an unknown
+name falls back to a puzzle glyph.
 
-## Getting started
+Persist your own JSON with `this.loadData()` / `this.saveData(obj)`; it is stored in your plugin's
+private data directory and needs no permission.
 
-Prerequisites: a Rust toolchain and the WASM target.
-
-```bash
-rustup target add wasm32-unknown-unknown
+```ts
+async onload() {
+  const state = (await this.loadData<{ runs: number }>()) ?? { runs: 0 };
+  state.runs++;
+  await this.saveData(state);
+}
 ```
 
-Copy `plugins/hello/` as your starting point. Its `Cargo.toml` is the minimum:
+## Capabilities
 
-```toml
-[package]
-name = "my-plugin"
-version = "0.1.0"
-edition = "2021"
+Reach the kernel through `this.<capability>`. Every call is brokered and rejects if the capability is
+not granted. Request each in the `jensen.permissions` block (below).
 
-[dependencies]
-extism-pdk = "1"
-# The PDK ships in the Jensen app repo. Depend on it by git for a standalone plugin repo:
-jensen-plugin = { git = "https://github.com/jensen-org/jensen" }
-serde_json = "1"
-
-[lib]
-crate-type = ["cdylib"]
+```ts
+await this.graph.impact({ path: "src/auth.rs" });      // needs permissions.graph
+await this.graph.dependencies({ path: "src/auth.rs", incoming: true });
+await this.graph.query({ /* ... */ });
+await this.graph.explainService({ /* ... */ });
+await this.knowledge.search({ query: "how login works" }); // needs permissions.knowledge
+await this.git.history({ path: "src/auth.rs", limit: 20 }); // needs permissions.git
+await this.git.semanticDiff({ /* ... */ });
+await this.fs.read("docs/spec.md");                    // needs a matching permissions.fs scope
+await this.fs.write("docs/out.md", contents);
+await this.net.fetch({ host: "api.example.com", path: "/v1/status" }); // needs the host in permissions.network
+await this.log.info("hello");
 ```
 
-Build it and sideload it for local testing (sideloading does **not** require a checksum, only registry
-installs do):
+`net.fetch` takes `{ host, path?, method? }`. The kernel performs the HTTPS request itself: `host` must
+be one you listed (no wildcards, no ports), the connection is pinned to the host's resolved public
+address so a redirect cannot escape it, and private and loopback addresses are refused.
 
-```bash
-cargo build --release --target wasm32-unknown-unknown
-cp target/wasm32-unknown-unknown/release/my_plugin.wasm plugin.wasm
+## Adding a UI
 
-# Jensen discovers plugins under its state dir. JENSEN_STATE_DIR overrides it;
-# otherwise it is ~/.local/state/jensen on Linux and the platform equivalent elsewhere.
-mkdir -p "$JENSEN_STATE_DIR/plugins/dev.you.myplugin"
-cp -r manifest.json plugin.wasm ui "$JENSEN_STATE_DIR/plugins/dev.you.myplugin/"
-```
-
-Restart Jensen, open the Plugins view, enable the plugin, and approve its permission scorecard. Your
-command shows up in the palette, your panel in the right panel, your theme in the theme list. Disable
-it and all of that disappears in one tick.
-
-## Writing the logic
-
-Your `lib.rs` exports functions with `#[plugin_fn]`. Two matter:
-
-- `activate()` runs once when the plugin loads. Do setup here.
-- `handle_command(input: String)` runs every time one of your commands or UI actions fires. The input
-  is JSON; return JSON.
-
-Reach the kernel through the `jensen-plugin` PDK. Every helper is a brokered syscall and returns an
-`Err` if the capability is not granted:
-
-```rust
-use jensen_plugin::{graph, knowledge, git, fs, net, ui, log};
-
-graph::impact("src/auth.rs")?;              // needs permissions.graph
-graph::dependencies("src/auth.rs", true)?;  // incoming = true
-graph::query("...")?;
-knowledge::search("how does login work")?;  // needs permissions.knowledge
-git::history(Some("src/auth.rs"), 20)?;     // needs permissions.git
-fs::read("docs/spec.md")?;                  // needs a matching permissions.fs scope
-fs::write("docs/out.md", contents)?;
-fs::data_read("cache.json")?;               // your private data dir, always allowed
-fs::data_write("cache.json", contents)?;
-net::fetch("api.example.com", "/v1/status")?; // needs the host in permissions.network
-ui::post("topic", serde_json::json!({ ... }));  // push an event to your iframe
-log::info("hello");
-```
-
-For anything not covered by a helper (for example `knowledge.ingest`, `git.semanticDiff`,
-`graph.explainService`), call the raw broker: `jensen_plugin::syscall("git.semanticDiff", params)`.
-
-## Writing the UI
-
-The UI is an ordinary web page that runs in a null-origin iframe. It cannot fetch, cannot reach the
-app, and cannot call the kernel. Its only channel is a typed message bridge to its own logic half.
-
-Use the `@jensen/plugin-ui` client:
+For rich views, ship an `ui/` folder. It runs in a second null-origin iframe with no kernel access; it
+talks only to your logic half through a typed bridge. Use `@jensen/plugin-ui`:
 
 ```js
 import { PluginUI } from "@jensen/plugin-ui";
-
 const jensen = new PluginUI();
 
 document.getElementById("run").addEventListener("click", async () => {
-  const result = await jensen.invokeCommand("my.run", { some: "args" });
+  const result = await jensen.invokeCommand("gcp.scan", { region: "eu" });
   document.getElementById("out").textContent = JSON.stringify(result);
 });
-
-// Events your logic pushes with ui::post arrive here.
-jensen.on("progress", (payload) => {
-  document.getElementById("out").textContent = JSON.stringify(payload);
-});
 ```
 
-`invokeCommand(command, args)` is relayed to your WASM `handle_command`. Whatever it returns resolves
-the promise. `on(topic, handler)` receives everything your logic sends with `ui::post`. If you would
-rather not add a dependency, the raw protocol is three message shapes posted to `window.parent`:
-`{ kind: "req", id, method: "invokeCommand", params }` out, and `{ kind: "res", id, ok, result }` /
-`{ kind: "evt", topic, payload }` in. See `plugins/hello/ui/` for the dependency-free version.
+In your logic half, handle those calls (return a value to resolve the promise) and push events with the
+UI event channel. The UI iframe has no network and cannot reach the app; the only path in or out is
+this bridge.
 
-## Examples
+## package.json and the jensen block
 
-### 1. A command with no UI and no permissions
+Everything the manifest needs is derived from `package.json`. Standard npm fields supply `name`,
+`version`, `description`, and `author`. The `jensen` block supplies what cannot be inferred:
 
-The smallest useful plugin.
+| `jensen.` field | Meaning |
+| --- | --- |
+| `id` | Reverse-DNS identity, lowercase letters, digits, `.` and `-`. Optional; derived from `name` if omitted. |
+| `category` | Free-form grouping shown on the card and used by the category filter. |
+| `minAppVersion` | Lowest Jensen version you support. Defaults to the app you publish from. |
+| `repo` | `owner/name` of the GitHub repo hosting your releases. |
+| `permissions` | `{ graph, knowledge, git, fs, network }`. See below. Deny by default. |
+| `contributes` | Optional. Declare views here to make them appear before your code runs (lazy load). Most plugins register imperatively in `onload` instead and leave this out. |
 
-```json
-{
-  "id": "dev.you.greet",
-  "name": "Greet", "version": "0.1.0", "minAppVersion": "0.0.0",
-  "description": "Says hello.", "author": "You",
-  "entry": { "wasm": "plugin.wasm" },
-  "contributes": { "commands": [{ "id": "greet.say", "title": "Say Hello" }] },
-  "permissions": {},
-  "activationEvents": ["onCommand:greet.say"]
-}
-```
+`permissions`:
 
-```rust
-use extism_pdk::*;
-use serde_json::{json, Value};
+- `graph` / `knowledge` / `git`: booleans, gate the matching capabilities.
+- `fs`: array of **relative** subpaths (e.g. `["docs"]`). Each confines file access to
+  `<project root>/<subpath>`. `..`, absolute paths, and backslashes are rejected.
+- `network`: array of **exact** hosts (e.g. `["api.example.com"]`).
 
-#[plugin_fn]
-pub fn handle_command(input: String) -> FnResult<String> {
-    let request: Value = serde_json::from_str(&input).unwrap_or(Value::Null);
-    let command = request.get("command").and_then(Value::as_str).unwrap_or("");
-    let result = match command {
-        "greet.say" => json!({ "message": "Hello from the sandbox!" }),
-        other => json!({ "error": format!("unknown command '{other}'") }),
-    };
-    Ok(result.to_string())
-}
-```
-
-### 2. A panel with a UI round-trip
-
-Add `entry.ui` and a panel, and push an event back to the iframe. This is `plugins/hello`.
-
-### 3. Reading the code graph
-
-Request `graph` and answer a question about impact. This is `plugins/impact`.
-
-```json
-{
-  "permissions": { "graph": true },
-  "contributes": { "commands": [{ "id": "impact.check", "title": "Impact of File" }] },
-  "activationEvents": ["onCommand:impact.check"]
-}
-```
-
-```rust
-#[plugin_fn]
-pub fn handle_command(input: String) -> FnResult<String> {
-    let request: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
-    let target = request["args"]["path"].as_str().unwrap_or("");
-    let impact = jensen_plugin::graph::impact(target)
-        .unwrap_or_else(|e| serde_json::json!({ "error": e.to_string() }));
-    Ok(impact.to_string())
-}
-```
-
-### 4. Calling an allowed network host
-
-Declare the exact host. The kernel performs the HTTPS request; your plugin never holds a socket, and
-redirects to any other host are refused.
-
-```json
-{
-  "permissions": { "network": ["api.example.com"] },
-  "contributes": { "commands": [{ "id": "status.fetch", "title": "Fetch Status" }] },
-  "activationEvents": ["onCommand:status.fetch"]
-}
-```
-
-### 5. A theme, with no code at all
-
-A theme-only plugin needs no WASM and no activation events. Ship a token map and declare it. This is
-`plugins/theme-light`.
-
-```json
-{
-  "id": "dev.you.midnight",
-  "name": "Midnight", "version": "0.1.0", "minAppVersion": "0.0.0",
-  "description": "A dark theme.", "author": "You",
-  "entry": {},
-  "contributes": {
-    "themes": [{ "id": "midnight", "name": "Midnight", "dark": true, "tokensFile": "theme.json" }]
-  },
-  "permissions": {},
-  "activationEvents": []
-}
-```
-
-`theme.json` is a map of the app's CSS design tokens to your values; override every token you want
-changed (a partial map leaves the base theme showing through). See `plugins/theme-light/theme.json`
-for the full set.
-
-## Resource limits
-
-Every plugin runs under a resource governor. The defaults per plugin are:
-
-| Limit | Default | Meaning |
-| --- | --- | --- |
-| CPU timeout | 5 s | A single syscall or command that runs longer is aborted. |
-| Memory | 256 pages (16 MiB) | The WASM instance cannot grow past this. |
-| Syscall rate | 50 / s | A token bucket. Bursts beyond it are rejected, not queued forever. |
-| Concurrency | 4 | At most this many syscalls in flight at once. |
-
-If a plugin storms the rate limit, loops forever, or blows the memory cap, the governor stops it and
-the user sees a toast explaining why. The user can also force-stop any plugin. Write your logic to do
-bounded work per command and to handle a denied or rate-limited syscall gracefully.
+What you write is only what you *request*. The kernel enforces the **granted** set, your request
+intersected with what the user approved on the consent screen. A user can withhold, say, network, and
+those calls return a permission error, so degrade rather than crash.
 
 ## Publishing
 
-### How installation works
-
-Users install from this registry: a public `index.json` that lists, per plugin,
-`{ id, name, author, description, category, version, min_app_version, repo, sha256 }`. The registry
-locates a plugin (`repo` + `version`) and pins it (`sha256` is the checksum of the release
-`manifest.json`); it carries no capabilities and no code. Each plugin's `repo` hosts GitHub releases.
-To install, Jensen builds the asset URLs as
-`https://github.com/<repo>/releases/download/<version>/<asset>`, downloads the release `manifest.json`
-and checks it against `sha256`, validates it, confirms its id matches the registry entry, downloads
-each artifact the manifest's `dist` block names (`plugin.wasm`, `ui.zip`, and any theme tokens) and
-checks each against the hash the now-trusted manifest pins, and stages the plugin disabled until the
-user approves its permissions. There are no keys to manage: because the manifest pins each artifact's
-checksum, the one entry hash vouches for the whole download, and what a plugin may actually do is
-enforced by the sandbox and the consent screen, not the registry.
-
-### Assemble a release
-
-`tools/release-plugin.sh` does the whole thing: builds the WASM (when the manifest declares one), zips
-`ui/`, copies each theme tokens file, computes the artifact sha256s, writes a release `manifest.json`
-with a `dist` block, and prints the manifest's own sha256.
+Publishing has no form. From your built plugin directory:
 
 ```bash
-tools/release-plugin.sh my-plugin/
-# writes my-plugin/release/{manifest.json, plugin.wasm?, ui.zip?, theme.json?}
-# prints the manifest sha256 to put in the registry entry
+jensen publish            # or: jensen publish path/to/plugin
 ```
 
-The release `manifest.json` is your manifest plus a `dist` block, for example:
-
-```json
-"dist": {
-  "wasm": { "asset": "plugin.wasm", "sha256": "..." },
-  "ui":   { "asset": "ui.zip",     "sha256": "..." },
-  "assets": [{ "asset": "theme.json", "sha256": "..." }]
-}
-```
-
-Because the manifest pins every artifact's sha256, its own checksum vouches for the whole download.
-Create a GitHub release whose tag equals the manifest `version`, and upload the files from `release/`
-as assets.
-
-### Submit to the registry
-
-Open a pull request adding one entry to the `plugins` array in `index.json`:
+It reads `package.json`, requires a built `main.js`, generates `manifest.json` (activating on startup
+so your `onload` runs), computes the manifest's `sha256`, and prints the registry entry to add:
 
 ```json
 {
-  "id": "dev.you.myplugin",
-  "name": "My Plugin",
-  "author": "You",
-  "description": "One line describing what it does.",
-  "category": "lint",
-  "version": "0.1.0",
-  "min_app_version": "0.0.0",
-  "repo": "you/my-plugin",
-  "sha256": "the manifest sha256 release-plugin.sh printed"
+  "id": "dev.you.gcp-scanner",
+  "name": "GCP Scanner",
+  "author": "Your Name",
+  "description": "Scan clusters from the graph.",
+  "category": "cloud",
+  "version": "1.0.0",
+  "min_app_version": "0.1.0",
+  "repo": "you/gcp-scanner",
+  "sha256": "…"
 }
 ```
 
-`version` must equal the release tag, `id` must match your release manifest, and `sha256` is the value
-`release-plugin.sh` printed. Validate the change against `schema.json`, and run the same validator
-Jensen uses, `pluginhost-lint` (from the app repo):
+You can also run it from the app: **Plugins → Publish**, pick your folder, and copy the entry.
 
-```bash
-cargo run -q -p pluginhost --bin pluginhost-lint -- my-plugin/manifest.json
-```
+Then:
 
-Once merged, your plugin appears in every user's Plugins view. See `CONTRIBUTING.md` for the checklist.
+1. Create a GitHub release on your `repo` whose tag equals `version`, uploading `manifest.json` and
+   `main.js` (plus a zipped `ui/` if you have one).
+2. To reach every user, open a pull request adding the entry above to this registry's `index.json`
+   (see `CONTRIBUTING.md`). To test or share privately, users can install the release URL directly;
+   Jensen marks such plugins **unverified** and asks for the full permission consent.
+
+### How installation works
+
+The registry's `index.json` lists, per plugin, `{ id, name, author, description, category, version,
+min_app_version, repo, sha256 }`. It locates a plugin (`repo` + `version`) and pins it (`sha256` is the
+checksum of the release `manifest.json`); it carries no capabilities and no code. To install, Jensen
+downloads the release `manifest.json`, checks it against `sha256`, validates it, confirms its id, and
+stages the plugin disabled until the user approves its permissions. There are no keys to manage: what a
+plugin may do is enforced by the sandbox and the consent screen, not the registry.
+
+## Resource limits
+
+Every plugin runs under a resource governor. The defaults per plugin:
+
+| Limit | Default | Meaning |
+| --- | --- | --- |
+| Syscall rate | 50 / s | A token bucket; bursts beyond it are rejected. |
+| Concurrency | 4 | At most this many brokered calls in flight at once. |
+| I/O budget | 256 MiB | Cumulative bytes across fs and network before calls are refused. |
+
+A runaway plugin is stopped and the user is told why; the user can also force-stop any plugin. Keep
+per-command work bounded and handle a denied or rate-limited call gracefully.
+
+## The advanced path: Rust to WebAssembly
+
+TypeScript is the default. For CPU-heavy or existing-Rust logic you can instead ship a WebAssembly
+module (`entry.wasm`) built against the `jensen-plugin` PDK; it runs in the same kernel with the same
+permissions and governor. The example plugins in `plugins/` (`hello`, `impact`, `plan-lint`,
+`theme-light`) are this path. Themes need no code at all: ship a token map and declare a
+`contributes.themes` entry with no `entry`.
 
 ## Security checklist
 
@@ -415,6 +283,6 @@ Once merged, your plugin appears in every user's Plugins view. See `CONTRIBUTING
 - Scope `fs` to the narrowest subpath that works, never the whole project.
 - List **exact** network hosts. There are no wildcards, and the kernel will not follow a redirect to
   any host you did not list.
-- Keep per-command work bounded so you stay inside the CPU and rate budgets.
-- Never assume a syscall succeeds. A user can withhold any capability, and your plugin should degrade,
+- Keep per-command work bounded so you stay inside the rate and I/O budgets.
+- Never assume a call succeeds. A user can withhold any capability, and your plugin should degrade,
   not crash.
