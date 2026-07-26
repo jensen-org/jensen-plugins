@@ -2,3 +2,4 @@
 # index.json pins their checksums.
 **/target/
 **/release/
+AGENTS.md
